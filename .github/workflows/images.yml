@@ -1,0 +1,53 @@
+name: Build Docker images
+
+on:
+  push:
+  schedule:
+    - cron: '0 12 * * 0' # Every Sunday at noon
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clone CFL
+        uses: actions/checkout@v4
+        with:
+          path: cfl
+
+      - name: Clone OSS-Fuzz
+        uses: actions/checkout@v4
+        with:
+          repository: google/oss-fuzz
+          path: oss-fuzz
+
+      - name: Build
+        run: |
+          cd $GITHUB_WORKSPACE/oss-fuzz
+          python3 -m venv .venv
+          source .venv/bin/activate
+
+          pip install -r infra/cifuzz/requirements.txt
+          pip install -r infra/ci/requirements.txt
+
+          $GITHUB_WORKSPACE/cfl/build-images.sh \
+            $GITHUB_WORKSPACE/oss-fuzz \
+            ghcr.io/eliaskosunen/clusterfuzzlite-build-fuzzers \
+            ghcr.io/eliaskosunen/clusterfuzzlite-run-fuzzers
+
+      - name: Publish
+        run: |
+          docker push ghcr.io/eliaskosunen/clusterfuzzlite-build-fuzzers:latest
+          docker push ghcr.io/eliaskosunen/clusterfuzzlite-run-fuzzers:latest
